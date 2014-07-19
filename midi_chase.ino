@@ -10,6 +10,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 #define sleep_action false
 #define space 60.0
 #define max_midi 128.0
+#define petal_size 20
 
 int step_size = exp((log(space)/3.0));
 int b_max = space;
@@ -19,6 +20,7 @@ bool flashOn = false;
 
 CRGB leds[NUM_LEDS];
 CRGB tertiary[NUM_LEDS];
+int ontimes[NUM_LEDS];
 int now = millis();
 int power = 0;
 int noteOn = 0;
@@ -37,52 +39,61 @@ void setup() {
   Serial.begin(9600);
 }
 
-void rgb(int someval) {
+void rgb(int pitch) {
   r = 0;
   g = 0;
   b = 0;
+  
+  if (pitch > 60) {
+    int offset = (pitch % 60);
+    pitch = 60 - offset;
+  }
     
-  if (someval > space) {
-    someval = someval - (someval - space);
+  if (pitch > space) {
+    pitch = pitch - (pitch - space);
   }
   
-  if (someval < r_max) {
-    r = map(someval,0,r_max,0,255);
+  if (pitch < r_max) {
+    r = map(pitch,0,r_max,0,255);
   }
-  if ((someval >= r_max) && (someval <= g_max)) {
-    b = map(someval-r_max,0,r_max,0,255);
+  if ((pitch >= r_max) && (pitch <= g_max)) {
+    b = map(pitch-r_max,0,r_max,0,255);
     r = 255 - b;
   }
-  if (someval >= g_max) {
-    r = map(someval-g_max,0,r_max,0,255);
+  if (pitch >= g_max) {
+    r = map(pitch-g_max,0,r_max,0,255);
     g = 255 - r;
   }
-  if (someval == space) {
+  if (pitch == space) {
     b = 255;
   }
   
 }
 
 void handleNoteOn(byte channel, byte pitch, byte velocity) {
-
+  
+  if (channel != 10) {
+    ontimes[pitch] = millis();
+  }
+      
   if (channel == 10) {
     cache();
     flashOn = true;
     flash(pitch);
   }
   else {
-    rgb(pitch);
-    noteOn = 1;
+    //
   }
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity) {
+  
   if (channel == 10) {
     de_cache();
     flashOn = false;
   }
   else {
-    noteOn = 0;
+    ontimes[pitch] = 0;
   }
 }
 
@@ -96,7 +107,9 @@ void blackout() {
 void shift() {
   FastLED.show(); 
   for (int i = NUM_LEDS-1; i>=1; i--) {
-    leds[i] = leds[i-1];
+    leds[i].r = leds[i-1].r/1.1;
+    leds[i].g = leds[i-1].g/1.1;
+    leds[i].b = leds[i-1].b/1.1;
  }
 }
 
@@ -129,15 +142,53 @@ void de_cache() {
   }
 }
 
+void flowerize() {
+  for (int i = 0; i<NUM_LEDS; i+= petal_size) {
+    leds[i] = CRGB::Black;
+  }
+}
+
+int get_pitch() {
+  int pitch = 0;
+  int onkeys = 0;
+  int total = 0;
+  noteOn = 0;
+  for (int i =0; i<NUM_LEDS; i++) {
+    if (ontimes[i] > 0) {
+      Serial.print("Key is on: ");
+      Serial.println(i);
+      total = total + i;
+      onkeys++;
+    }
+  }
+  if (total > 0) {
+    noteOn = 1;
+    pitch = total/onkeys;
+  }
+  else {
+    noteOn = 0;
+  }
+  return(pitch);
+}
+  
+  
+
 void loop() {
-  if ((millis() % 25 == 0) && (flashOn == false)) {
+  //shift the leds every 80ms, except when the flash buttons are being pressed, then skip it.
+  if ((millis() % 80 == 0) && (flashOn == false)) {
+    int pitch = get_pitch();
+    rgb(pitch);
     shift();
+    flowerize();
   }
   
+  //if a note is currently pressed, figure out the overall pitch, then correspond that to an RGB valueset
   if (noteOn == 1) {
-    leds[1].r = r;
-    leds[1].g = g;
-    leds[1].b = b;
+    for (int i = 1; i<NUM_LEDS; i+= petal_size) {
+      leds[i].r = r;
+      leds[i].g = g;
+      leds[i].b = b;
+    }
   }  
   MIDI.read();
 }
