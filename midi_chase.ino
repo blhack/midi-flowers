@@ -1,6 +1,7 @@
 #include "FastLED.h"
 #include <MIDI.h>
 
+
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 
@@ -10,7 +11,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 #define sleep_action false
 #define space 60.0
 #define max_midi 128.0
-#define petal_size 20
+#define petal_size 200
 
 int step_size = exp((log(space)/3.0));
 int b_max = space;
@@ -20,7 +21,7 @@ bool flashOn = false;
 
 CRGB leds[NUM_LEDS];
 CRGB tertiary[NUM_LEDS];
-int ontimes[NUM_LEDS];
+unsigned long ontimes[NUM_LEDS];
 int now = millis();
 int power = 0;
 int noteOn = 0;
@@ -71,23 +72,24 @@ void rgb(int pitch) {
 }
 
 void handleNoteOn(byte channel, byte pitch, byte velocity) {
-  
-  if (channel != 10) {
-    ontimes[pitch] = millis();
-  }
+  Serial.println("Note on!");
       
   if (channel == 10) {
-    cache();
+    if (flashOn == false) {
+      cache();
+    }
     flashOn = true;
     flash(pitch);
   }
   else {
-    //
+    ontimes[pitch] = millis();
   }
+  Serial.println(ontimes[pitch]);
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity) {
   
+  //if this is the drum pad
   if (channel == 10) {
     de_cache();
     flashOn = false;
@@ -97,6 +99,7 @@ void handleNoteOff(byte channel, byte pitch, byte velocity) {
   }
 }
 
+//turn off the strip
 void blackout() {
   for (int i = 0; i < NUM_LEDS - 1; i++) {
     leds[i] = CRGB::Black;
@@ -104,15 +107,18 @@ void blackout() {
   FastLED.show();
 }
 
+//shift every member of leds up
 void shift() {
   FastLED.show(); 
   for (int i = NUM_LEDS-1; i>=1; i--) {
-    leds[i].r = leds[i-1].r/1.1;
-    leds[i].g = leds[i-1].g/1.1;
-    leds[i].b = leds[i-1].b/1.1;
+    leds[i].r = leds[i-1].r/1;
+    leds[i].g = leds[i-1].g/1;
+    leds[i].b = leds[i-1].b/1;
  }
 }
 
+
+//set every LED to on
 void flash(int pitch) {
   for (int i=1; i < NUM_LEDS; i++) {
     if (pitch == 36) {
@@ -130,12 +136,14 @@ void flash(int pitch) {
   FastLED.show();
 }
 
+//save the current state of the strip to an array
 void cache() {
   for (int i = 0; i<NUM_LEDS; i++) {
     tertiary[i] = leds[i];
   }
 }
 
+//write the currently saved strip state back out to the strip from memory
 void de_cache() {
   for (int i = 0; i<NUM_LEDS; i++) {
     leds[i] = tertiary[i];
@@ -155,8 +163,6 @@ int get_pitch() {
   noteOn = 0;
   for (int i =0; i<NUM_LEDS; i++) {
     if (ontimes[i] > 0) {
-      Serial.print("Key is on: ");
-      Serial.println(i);
       total = total + i;
       onkeys++;
     }
@@ -170,19 +176,34 @@ int get_pitch() {
   }
   return(pitch);
 }
+
+void show_keys() {
+  for (int i = 0; i<NUM_LEDS; i++) {
+    if (ontimes[i] > 0) {
+      Serial.print(ontimes[i]);
+      Serial.print("-");
+      Serial.println();
+    }
+  }
+}
   
   
 
 void loop() {
   //shift the leds every 80ms, except when the flash buttons are being pressed, then skip it.
-  if ((millis() % 80 == 0) && (flashOn == false)) {
+    
+  if ((millis() % 85 == 0) && (flashOn == false)) {
+    
+    //figure out the overall pitch of every key currently being pressed, then get an RGB colorset for it
     int pitch = get_pitch();
     rgb(pitch);
     shift();
+    
+    //set every nth (dependent on petalsize, n being the base of the petal) led to black
     flowerize();
   }
   
-  //if a note is currently pressed, figure out the overall pitch, then correspond that to an RGB valueset
+  //if a note is currently pressed, write the valueset out to the strip
   if (noteOn == 1) {
     for (int i = 1; i<NUM_LEDS; i+= petal_size) {
       leds[i].r = r;
