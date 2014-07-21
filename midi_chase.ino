@@ -4,19 +4,19 @@
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
-
 #define NUM_LEDS 200
 #define DATA_PIN 7
 #define CLOCK_PIN 8
 #define sleep_action false
 #define space 60.0
 #define max_midi 128.0
-#define petal_size 200
+#define petal_size 15
 
 int step_size = exp((log(space)/3.0));
 int b_max = space;
 int g_max = (space - (space/3.0));
 int r_max = (space - ((space/3.0)*2));
+int max_on = 50000;
 bool flashOn = false;
 
 CRGB leds[NUM_LEDS];
@@ -28,10 +28,12 @@ int noteOn = 0;
 int r = 0;
 int g = 0;
 int b = 0;
+float scaler = 1.0;
+float fader = 0.01;
 
 void setup() {
   FastLED.addLeds<WS2801, DATA_PIN, CLOCK_PIN, BGR>(leds, NUM_LEDS);
-  leds[0] = CRGB::Black;
+  //leds[0] = CRGB::Black;
   pinMode(A0, INPUT);
   pinMode(A1, INPUT);
   MIDI.setHandleNoteOn(handleNoteOn);  // Put only the name of the function
@@ -72,8 +74,10 @@ void rgb(int pitch) {
 }
 
 void handleNoteOn(byte channel, byte pitch, byte velocity) {
-  Serial.println("Note on!");
-      
+  Serial.println(velocity);
+  fader = velocity/1000.0;
+  Serial.println(scaler);
+  scaler = 1.01;
   if (channel == 10) {
     if (flashOn == false) {
       cache();
@@ -84,7 +88,6 @@ void handleNoteOn(byte channel, byte pitch, byte velocity) {
   else {
     ontimes[pitch] = millis();
   }
-  Serial.println(ontimes[pitch]);
 }
 
 void handleNoteOff(byte channel, byte pitch, byte velocity) {
@@ -111,9 +114,9 @@ void blackout() {
 void shift() {
   FastLED.show(); 
   for (int i = NUM_LEDS-1; i>=1; i--) {
-    leds[i].r = leds[i-1].r/1;
-    leds[i].g = leds[i-1].g/1;
-    leds[i].b = leds[i-1].b/1;
+    leds[i].r = leds[i-1].r/scaler;
+    leds[i].g = leds[i-1].g/scaler;
+    leds[i].b = leds[i-1].b/scaler;
  }
 }
 
@@ -172,7 +175,7 @@ int get_pitch() {
     pitch = total/onkeys;
   }
   else {
-    noteOn = 0;
+    //noteOn = 0;
   }
   return(pitch);
 }
@@ -186,26 +189,37 @@ void show_keys() {
     }
   }
 }
-  
+
+
+void expire_keys() {
+  for (int i = 0; i<NUM_LEDS; i++) {
+    if ((millis() - ontimes[i]) > max_on) {
+      ontimes[i] = 0;
+    }
+  }
+}
   
 
 void loop() {
   //shift the leds every 80ms, except when the flash buttons are being pressed, then skip it.
     
-  if ((millis() % 85 == 0) && (flashOn == false)) {
+  if ((millis() % 30 == 0) && (flashOn == false)) {
     
     //figure out the overall pitch of every key currently being pressed, then get an RGB colorset for it
+    expire_keys();
     int pitch = get_pitch();
     rgb(pitch);
     shift();
+    scaler = scaler + fader;
     
     //set every nth (dependent on petalsize, n being the base of the petal) led to black
-    flowerize();
+    //flowerize();
   }
   
   //if a note is currently pressed, write the valueset out to the strip
   if (noteOn == 1) {
     for (int i = 1; i<NUM_LEDS; i+= petal_size) {
+      
       leds[i].r = r;
       leds[i].g = g;
       leds[i].b = b;
